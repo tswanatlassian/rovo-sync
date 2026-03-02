@@ -1,0 +1,13 @@
+# Python Dependencies for Rovo Sync
+
+# API Clients
+requests>=2.31.0
+
+# Data handling
+dataclasses-json>=0.6.0
+
+# Webhook Server
+flask>=3.0.0
+
+# Optional: Better logging
+python-dotenv>=1.0.0
