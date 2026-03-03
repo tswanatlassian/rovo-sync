@@ -131,10 +131,32 @@ class ConfluenceClient:
     def __init__(self, url: str, token: str):
         self.url = url.rstrip("/")
         self.token = token
-        self.headers = {
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json"
-        }
+        # Try Bearer token first, but also support Basic auth
+        # Confluence Cloud works better with email:token Basic auth
+        import base64
+        # Extract email from token if it's in format email:token
+        # Otherwise assume token is just the API token
+        try:
+            # Try as email:token format
+            if ":" in token:
+                credentials = base64.b64encode(token.encode()).decode()
+            else:
+                # Fall back to Bearer token
+                credentials = None
+        except:
+            credentials = None
+        
+        if credentials:
+            self.headers = {
+                "Authorization": f"Basic {credentials}",
+                "Content-Type": "application/json"
+            }
+        else:
+            self.headers = {
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json"
+            }
+        logger.info(f"Confluence auth method: {'Basic (email:token)' if credentials else 'Bearer'}")
     
     def get_page(self, page_id: str) -> Dict:
         """Get page content"""
