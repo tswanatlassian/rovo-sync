@@ -48,7 +48,11 @@ class Config:
         if not self.confluence_token:
             raise ValueError("CONFLUENCE_TOKEN environment variable required")
         if not self.planning_pages:
-            raise ValueError("PLANNING_PAGES environment variable required")
+            raise ValueError(
+                "PLANNING_PAGES environment variable required.\n"
+                "Expected format: '{\"3670017\": \"DESIGN\"}'\n"
+                "Set this in GitHub repo settings → Secrets and variables → Actions → New repository secret"
+            )
 
 # ============================================================================
 # LOGGING SETUP
@@ -409,6 +413,9 @@ class RovoSyncOrchestrator:
 
 def main():
     """Main entry point for GitHub Actions / scheduled execution"""
+    # Initialize logger early so it's available in exception handler
+    logger = setup_logging()
+    
     try:
         config = Config()
         logger = setup_logging(config.log_level)
@@ -427,6 +434,8 @@ def main():
         
     except Exception as e:
         logger.error(f"Fatal error: {str(e)}")
+        import traceback
+        logger.error(traceback.format_exc())
         raise
 
 def webhook_handler(event_data: Dict) -> Dict:
