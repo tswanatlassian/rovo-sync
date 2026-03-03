@@ -1,14 +1,9 @@
 name: Rovo Sync - Automated Confluence ↔ Jira Sync
 
 on:
-  # Hourly polling
   schedule:
-    - cron: '0 * * * *'  # Every hour at minute 0
-  
-  # Manual trigger
+    - cron: '0 * * * *'
   workflow_dispatch:
-  
-  # Can also trigger on push (for testing)
   push:
     branches:
       - main
@@ -33,7 +28,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install requests dataclasses-json
+          pip install -q requests
       
       - name: Run Rovo Sync
         env:
@@ -44,22 +39,12 @@ jobs:
           PLANNING_PAGES: ${{ secrets.PLANNING_PAGES }}
           LOG_LEVEL: INFO
           SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
-        run: |
-          python rovo_sync_orchestrator.py
+        run: python rovo_sync_orchestrator.py
       
-      - name: Upload logs
+      - name: Save logs as artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: sync-logs
           path: rovo_sync.log
           retention-days: 7
-      
-      - name: Commit updated memory files
-        if: success()
-        run: |
-          git config --local user.email "rovo-sync@github-actions"
-          git config --local user.name: "Rovo Sync Bot"
-          git add tacs_decisions.json tacs_learning.json || true
-          git commit -m "Update: Sync cycle at $(date -u +'%Y-%m-%d %H:%M UTC')" || echo "No changes to commit"
-          git push || echo "Nothing to push"
