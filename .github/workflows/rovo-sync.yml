@@ -4,12 +4,6 @@ on:
   schedule:
     - cron: '0 * * * *'
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - 'rovo_sync_orchestrator.py'
-      - '*_implementation.py'
 
 jobs:
   sync:
@@ -17,16 +11,13 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
       
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - uses: actions/setup-python@v4
         with:
           python-version: '3.11'
       
-      - name: Install dependencies
-        run: |
+      - run: |
           python -m pip install --upgrade pip
           pip install -q requests
       
@@ -38,13 +29,4 @@ jobs:
           CONFLUENCE_TOKEN: ${{ secrets.CONFLUENCE_TOKEN }}
           PLANNING_PAGES: ${{ secrets.PLANNING_PAGES }}
           LOG_LEVEL: INFO
-          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
         run: python rovo_sync_orchestrator.py
-      
-      - name: Save logs as artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: sync-logs
-          path: rovo_sync.log
-          retention-days: 7
