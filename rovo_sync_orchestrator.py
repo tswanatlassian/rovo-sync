@@ -95,10 +95,14 @@ class JiraClient:
     def get_issue(self, issue_key: str) -> Dict:
         """Get issue details"""
         import requests
-        url = f"{self.url}/rest/api/3/issues/{issue_key}"
-        response = requests.get(url, headers=self.headers)
-        response.raise_for_status()
-        return response.json()
+        url = f"{self.url}/rest/api/3/issue/{issue_key}"
+        try:
+            response = requests.get(url, headers=self.headers, timeout=30)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error getting issue {issue_key}: {str(e)}")
+            raise
     
     def get_linked_issues(self, issue_key: str) -> List[Dict]:
         """Get issues linked to this one"""
@@ -257,12 +261,51 @@ class RovoSyncOrchestrator:
         for issue_key in issue_keys:
             try:
                 issue = self.jira.get_issue(issue_key)
-                # Would process comments for decisions here
-                self.logger.info(f"Processing decisions for {issue_key}")
-                # decisions would be captured here
+                comments = issue.get("fields", {}).get("comment", {}).get("comments", [])
+                
+                self.logger.info(f"Processing {len(comments)} comments for {issue_key}")
+                
+                # Look for decision keywords in comments
+                for comment in comments:
+                    body = comment.get("body", {})
+                    text = self._extract_text_from_adf(body)
+                    
+                    # Check if comment contains decision keywords
+                    if any(keyword in text.lower() for keyword in ["decision:", "we decided", "agreed to"]):
+                        decision = {
+                            "title": f"Decision on {issue_key}",
+                            "description": text[:200] + "..." if len(text) > 200 else text,
+                            "issue": issue_key,
+                            "author": comment.get("author", {}).get("displayName", "Unknown"),
+                            "created": comment.get("created", "")
+                        }
+                        decisions.append(decision)
+                        self.logger.info(f"Captured decision from {issue_key}")
+                        
             except Exception as e:
                 self.logger.warning(f"Could not process {issue_key}: {str(e)}")
         return decisions
+    
+    def _extract_text_from_adf(self, adf: Dict) -> str:
+        """Extract plain text from Atlassian Document Format (ADF)"""
+        if not adf:
+            return ""
+        
+        text_parts = []
+        
+        def extract_recursive(node):
+            if isinstance(node, dict):
+                if node.get("type") == "text":
+                    text_parts.append(node.get("text", ""))
+                elif "content" in node:
+                    for child in node["content"]:
+                        extract_recursive(child)
+            elif isinstance(node, list):
+                for item in node:
+                    extract_recursive(item)
+        
+        extract_recursive(adf)
+        return " ".join(text_parts)
     
     def _track_refinements(self, issue_keys: List[str]) -> List[Dict]:
         """Run Phase 3.3: Continuous Refinement"""
@@ -277,11 +320,53 @@ class RovoSyncOrchestrator:
     def _update_confluence_page(self, page_id: str, changes: List, 
                                decisions: List, refinements: List, learnings: List):
         """Update Confluence page with results"""
+        if not changes and not decisions and not refinements and not learnings:
+            self.logger.info(f"No changes detected for page {page_id}")
+            return
+        
         # Build activity feed
         activity = self._build_activity_feed(changes, decisions, refinements, learnings)
         
-        # In real implementation, would update page content
-        self.logger.info(f"Would update page {page_id} with {len(activity)} activities")
+        # Build updated content
+        content = self._build_page_content(page_id, activity, changes, decisions, refinements, learnings)
+        
+        # Update the page
+        try:
+            page = self.confluence.get_page(page_id)
+            title = page.get("title", "Planning Page - Synced")
+            self.confluence.update_page(page_id, title, content)
+            self.logger.info(f"Updated page {page_id} with {len(activity)} activities")
+        except Exception as e:
+            self.logger.error(f"Failed to update page {page_id}: {str(e)}")
+    
+    def _build_page_content(self, page_id: str, activity: List[str], changes: List,
+                           decisions: List, refinements: List, learnings: List) -> str:
+        """Build HTML content for Confluence page with all updates"""
+        timestamp = datetime.now().isoformat()
+        
+        # Build activity feed section
+        activity_html = "<h2>📢 Recent Activity</h2><ul>"
+        for entry in activity:
+            activity_html += f"<li>{entry} ({timestamp})</li>"
+        activity_html += "</ul>"
+        
+        # Build changes section
+        changes_html = "<h2>📊 Work Item Status</h2><table><tr><th>Issue</th><th>Status</th></tr>"
+        for change in changes:
+            changes_html += f"<tr><td>{change['issue']}</td><td>{change['status']}</td></tr>"
+        changes_html += "</table>"
+        
+        # Build decisions section
+        decisions_html = "<h2>📝 Decisions</h2>"
+        if decisions:
+            decisions_html += "<ul>"
+            for decision in decisions:
+                decisions_html += f"<li>{decision.get('title', 'Decision')}: {decision.get('description', '')}</li>"
+            decisions_html += "</ul>"
+        else:
+            decisions_html += "<p>No new decisions captured.</p>"
+        
+        return activity_html + changes_html + decisions_html
     
     def _build_activity_feed(self, changes: List, decisions: List, 
                             refinements: List, learnings: List) -> List[str]:
@@ -290,7 +375,7 @@ class RovoSyncOrchestrator:
         for change in changes:
             activity.append(f"📊 {change['issue']}: {change['status']}")
         for decision in decisions:
-            activity.append(f"💡 Decision captured")
+            activity.append(f"💡 {decision.get('title', 'Decision')}")
         for refinement in refinements:
             activity.append(f"🔄 Refinement tracked")
         for learning in learnings:
