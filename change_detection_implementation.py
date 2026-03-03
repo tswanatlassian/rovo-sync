@@ -447,15 +447,16 @@ if __name__ == "__main__":
     
     changes = loop.poll_once(page_id)
     
-    print(f"Detected {len(changes)} changes:")
+    logger = logging.getLogger(__name__)
+    logger.info(f"Detected {len(changes)} changes:")
     for change in changes:
-        print(f"  - {change.issue_key}: {change.change_type} - {change.description}")
+        logger.info(f"  - {change.issue_key}: {change.change_type} - {change.description}")
     
     # Example: Query cached state
     state = loop.engine.get_cached_state("TACS-42")
     if state:
-        print(f"\nCached state for TACS-42:")
-        print(f"  Status: {state.status}")
-        print(f"  Assignee: {state.assignee}")
-        print(f"  Comments: {state.comments_count}")
-        print(f"  Blocked: {state.is_blocked}")
+        logger.info(f"\nCached state for TACS-42:")
+        logger.info(f"  Status: {state.status}")
+        logger.info(f"  Assignee: {state.assignee}")
+        logger.info(f"  Comments: {state.comments_count}")
+        logger.info(f"  Blocked: {state.is_blocked}")
