@@ -139,10 +139,25 @@ class ConfluenceClient:
     def get_page(self, page_id: str) -> Dict:
         """Get page content"""
         import requests
-        url = f"{self.url}/api/v3/pages/{page_id}"
-        response = requests.get(url, headers=self.headers)
-        response.raise_for_status()
-        return response.json()
+        url = f"{self.url}/api/v2/pages/{page_id}"
+        logger.info(f"Fetching Confluence page: {url}")
+        try:
+            response = requests.get(url, headers=self.headers, timeout=30)
+            logger.info(f"Response status: {response.status_code}")
+            logger.info(f"Response content length: {len(response.content)}")
+            logger.info(f"Response headers: {response.headers.get('content-type')}")
+            response.raise_for_status()
+            
+            if not response.content:
+                raise ValueError("Empty response from Confluence API")
+            
+            return response.json()
+        except requests.exceptions.JSONDecodeError as e:
+            logger.error(f"JSON decode error. Response text: {response.text[:500]}")
+            raise
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error getting page {page_id}: {str(e)}")
+            raise
     
     def update_page(self, page_id: str, title: str, content: str):
         """Update page content"""
@@ -150,15 +165,26 @@ class ConfluenceClient:
         page = self.get_page(page_id)
         version = page.get("version", {}).get("number", 0) + 1
         
-        url = f"{self.url}/api/v3/pages/{page_id}"
+        url = f"{self.url}/api/v2/pages/{page_id}"
         data = {
-            "version": {"number": version},
+            "id": page_id,
+            "status": "current",
             "title": title,
-            "body": {"representation": "storage", "value": content}
+            "body": {
+                "storage": {
+                    "representation": "storage",
+                    "value": content
+                }
+            },
+            "version": {"number": version}
         }
-        response = requests.put(url, headers=self.headers, json=data)
-        response.raise_for_status()
-        logger.info(f"Updated Confluence page {page_id}")
+        try:
+            response = requests.put(url, headers=self.headers, json=data, timeout=30)
+            response.raise_for_status()
+            logger.info(f"Updated Confluence page {page_id}")
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error updating page {page_id}: {str(e)}")
+            raise
 
 # ============================================================================
 # MAIN ORCHESTRATOR
