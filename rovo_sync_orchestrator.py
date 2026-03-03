@@ -139,10 +139,11 @@ class ConfluenceClient:
     def get_page(self, page_id: str) -> Dict:
         """Get page content"""
         import requests
-        url = f"{self.url}/api/v2/pages/{page_id}"
+        # Use v1 API (most stable for Confluence Cloud)
+        url = f"{self.url}/rest/api/content/{page_id}"
         logger.info(f"Fetching Confluence page: {url}")
         try:
-            response = requests.get(url, headers=self.headers, timeout=30)
+            response = requests.get(url, headers=self.headers, timeout=30, params={"expand": "body.storage,version"})
             logger.info(f"Response status: {response.status_code}")
             logger.info(f"Response content length: {len(response.content)}")
             logger.info(f"Response headers: {response.headers.get('content-type')}")
@@ -163,12 +164,13 @@ class ConfluenceClient:
         """Update page content"""
         import requests
         page = self.get_page(page_id)
-        version = page.get("version", {}).get("number", 0) + 1
+        version = page.get('version', {}).get('number', 0) + 1
         
-        url = f"{self.url}/api/v2/pages/{page_id}"
+        # Use v1 API (most stable for Confluence Cloud)
+        url = f"{self.url}/rest/api/content/{page_id}"
         data = {
             "id": page_id,
-            "status": "current",
+            "type": "page",
             "title": title,
             "body": {
                 "storage": {
